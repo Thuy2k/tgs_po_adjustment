@@ -88,42 +88,59 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
     <!-- Summary cards -->
     <div class="row g-3 mb-3" id="poa-summary">
         <div class="col-md-3">
-            <div class="card h-100"><div class="card-body">
-                <div class="text-muted small">SKU đã cấu hình</div>
-                <div class="h4 mb-0" data-key="configured">—</div>
-            </div></div>
+            <div class="card h-100 border-danger bg-label-danger poa-card-urgent" id="poa-card-urgent" role="button"
+                 title="Bấm để lọc nhanh các dòng dưới MIN">
+                <div class="card-body">
+                    <div class="text-danger small fw-semibold">
+                        <i class="bx bxs-error-circle me-1"></i>DƯỚI MIN — MUA GẤP
+                    </div>
+                    <div class="h3 mb-0 text-danger" data-key="count_urgent">—</div>
+                    <div class="small text-muted">Tổng SL cần mua: <span data-key="sum_urgent">—</span></div>
+                </div>
+            </div>
         </div>
         <div class="col-md-3">
             <div class="card h-100 border-warning"><div class="card-body">
-                <div class="text-muted small">Đề xuất thiếu (xin / mua)</div>
+                <div class="text-muted small">Nên mua / xin thêm (chưa đến MIN)</div>
                 <div class="h4 mb-0 text-warning" data-key="count_deficit">—</div>
                 <div class="small text-muted">Tổng SL: <span data-key="sum_deficit">—</span></div>
             </div></div>
         </div>
         <div class="col-md-3">
             <div class="card h-100 border-info"><div class="card-body">
-                <div class="text-muted small">Đề xuất thừa (trả / cảnh báo)</div>
+                <div class="text-muted small">Thừa (trả / cảnh báo)</div>
                 <div class="h4 mb-0 text-info" data-key="count_surplus">—</div>
                 <div class="small text-muted">Tổng SL: <span data-key="sum_surplus">—</span></div>
             </div></div>
         </div>
         <div class="col-md-3">
             <div class="card h-100"><div class="card-body">
-                <div class="text-muted small">Tổng dòng đề xuất</div>
-                <div class="h4 mb-0" data-key="total">—</div>
+                <div class="text-muted small">SKU đã cấu hình</div>
+                <div class="h4 mb-0" data-key="configured">—</div>
+                <div class="small text-muted">Tổng dòng đề xuất: <span data-key="total">—</span></div>
             </div></div>
         </div>
     </div>
 
+    <style>
+        .poa-card-urgent { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+        .poa-card-urgent:hover { transform: translateY(-1px); box-shadow: 0 .25rem .75rem rgba(220,53,69,.15); }
+        .poa-card-urgent.active { box-shadow: 0 0 0 2px #dc3545 inset; }
+        tr.poa-row-urgent td { background-color: #fdecea !important; }
+        tr.poa-row-urgent { border-left: 3px solid #dc3545; }
+        .poa-badge-urgent { background:#dc3545 !important; color:#fff !important; animation: poaPulse 1.6s infinite; }
+        @keyframes poaPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(220,53,69,.55); } 50% { box-shadow: 0 0 0 6px rgba(220,53,69,0); } }
+    </style>
+
     <!-- Filters -->
     <div class="card mb-3">
         <div class="card-body py-2">
-            <div class="row g-2">
-                <div class="col-md-4">
+            <div class="row g-2 align-items-center">
+                <div class="col-md-3">
                     <input type="text" id="poa-search" class="form-control"
                            placeholder="Tìm SKU hoặc tên hàng...">
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <select id="poa-filter-intent" class="form-select">
                         <option value="">Tất cả loại đề xuất</option>
                         <option value="shop_request_from_warehouse">Shop xin hàng từ kho</option>
@@ -132,7 +149,15 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
                         <option value="warehouse_warning">Kho thừa (cảnh báo)</option>
                     </select>
                 </div>
-                <div class="col-md-4 text-end">
+                <div class="col-md-3">
+                    <select id="poa-filter-priority" class="form-select">
+                        <option value="">Tất cả mức ưu tiên</option>
+                        <option value="urgent">🔴 Chỉ dưới MIN (mua gấp)</option>
+                        <option value="normal">🟡 Nên mua / nên xin</option>
+                        <option value="info">⚪ Thừa / cảnh báo</option>
+                    </select>
+                </div>
+                <div class="col-md-3 text-end">
                     <span class="text-muted small">
                         Hiển thị <b id="poa-shown">0</b> / <b id="poa-total">0</b> dòng
                     </span>
@@ -173,12 +198,11 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
     </div>
 
     <div class="alert alert-light border mt-3 small">
-        <b>Cách hiểu:</b>
+        <b>Cách hiểu mức ưu tiên:</b>
         <ul class="mb-0">
-            <li><span class="badge bg-label-warning">Shop xin hàng</span> &mdash; Shop có tồn nhỏ hơn Max → đề xuất xin từ <b>kho cha</b>.</li>
-            <li><span class="badge bg-label-info">Shop trả hàng</span> &mdash; Shop có tồn lớn hơn Max → đề xuất chuyển trả về <b>kho cha</b>.</li>
-            <li><span class="badge bg-label-warning">Kho mua thêm</span> &mdash; Kho thiếu so với Max → đề xuất tạo PO mua thêm.</li>
-            <li><span class="badge bg-label-secondary">Kho thừa</span> &mdash; Chỉ cảnh báo, đợi shop xin hàng.</li>
+            <li><span class="badge poa-badge-urgent">MUA GẤP</span> &mdash; Tồn kho hiện tại <b>dưới ngưỡng MIN</b> (an toàn) → nguy cơ đứt hàng, ưu tiên xử lý đầu tiên. SL đề xuất = bù lên MAX.</li>
+            <li><span class="badge bg-label-warning">Nên mua / xin</span> &mdash; Tồn vẫn trên MIN nhưng dưới MAX → mua bổ sung khi có dịp, không gấp.</li>
+            <li><span class="badge bg-label-info">Thừa</span> &mdash; Tồn vượt MAX → cảnh báo dư hàng. Kho thì chỉ cảnh báo, shop thì đề xuất trả về kho cha.</li>
         </ul>
     </div>
 </div>
@@ -241,6 +265,7 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
     var state = {
         rows: [],
         filterIntent: '',
+        filterPriority: '',
         search: '',
         selected: {} // {idx: true}
     };
@@ -265,6 +290,13 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         return '<span class="badge ' + cls + '">' + $('<i>').text(label).html() + '</span>';
     }
 
+    function priorityBadge(priority) {
+        if (priority === 'urgent') return '<span class="badge poa-badge-urgent" title="Tồn dưới ngưỡng MIN">MUA GẤP</span>';
+        if (priority === 'normal') return '<span class="badge bg-label-warning">Nên mua</span>';
+        if (priority === 'info')   return '<span class="badge bg-label-info">Cảnh báo</span>';
+        return '';
+    }
+
     function diffCell(diff) {
         var v = parseFloat(diff) || 0;
         var cls = v < 0 ? 'text-warning fw-semibold' : (v > 0 ? 'text-info fw-semibold' : 'text-muted');
@@ -281,8 +313,10 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
     function applyFilters() {
         var s = (state.search || '').toLowerCase().trim();
         var intent = state.filterIntent || '';
+        var prio = state.filterPriority || '';
         return state.rows.filter(function (r) {
             if (intent && r.intent !== intent) return false;
+            if (prio && (r.priority || '') !== prio) return false;
             if (s) {
                 var hay = (r.sku + ' ' + r.name).toLowerCase();
                 if (hay.indexOf(s) === -1) return false;
@@ -305,9 +339,10 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         var html = '';
         data.forEach(function (r, idx) {
             var rowCls = '';
-            if (r.level === 'danger')       rowCls = 'table-danger';
-            else if (r.level === 'warning') rowCls = 'table-warning';
-            else if (r.level === 'info')    rowCls = 'table-info';
+            if (r.priority === 'urgent')   rowCls = 'poa-row-urgent';
+            else if (r.level === 'danger') rowCls = 'table-danger';
+            else if (r.level === 'warning')rowCls = 'table-warning';
+            else if (r.level === 'info')   rowCls = 'table-info';
 
             // Không cho chọn dòng kho thừa cảnh báo
             var canSelect = (r.intent !== 'warehouse_warning') && (parseFloat(r.quantity) > 0);
@@ -315,15 +350,24 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
                 ? '<input type="checkbox" class="form-check-input poa-row-check" data-idx="' + r._idx + '">'
                 : '<span class="text-muted" title="Không tạo PO cho dòng này">—</span>';
 
+            // Cột loại đề xuất: gộp priority badge + intent badge
+            var typeCellHtml = (r.priority === 'urgent' ? priorityBadge('urgent') + ' ' : '')
+                             + intentBadge(r.intent, r.intent_label);
+
+            // Highlight MIN khi tồn dưới MIN
+            var minCellHtml = r.priority === 'urgent'
+                ? '<span class="text-danger fw-bold" title="Tồn hiện tại dưới MIN!">' + fmt(r.min_qty) + ' ⚠</span>'
+                : fmt(r.min_qty);
+
             html += '<tr class="' + rowCls + '">'
                   +   '<td>' + checkboxHtml + '</td>'
                   +   '<td><code>' + $('<i>').text(r.sku).html() + '</code></td>'
                   +   '<td>' + $('<i>').text(r.name || '').html() + '</td>'
                   +   '<td class="text-end">' + fmt(r.current_stock) + '</td>'
-                  +   '<td class="text-end">' + fmt(r.min_qty) + '</td>'
+                  +   '<td class="text-end">' + minCellHtml + '</td>'
                   +   '<td class="text-end">' + fmt(r.max_qty) + '</td>'
                   +   '<td class="text-end">' + diffCell(r.diff) + '</td>'
-                  +   '<td>' + intentBadge(r.intent, r.intent_label) + '</td>'
+                  +   '<td>' + typeCellHtml + '</td>'
                   +   '<td class="text-end fw-semibold">' + fmt(r.quantity) + '</td>'
                   +   '<td>' + placeCell(r.transfer_blog_id, r.transfer_blog_name) + '</td>'
                   +   '<td>' + placeCell(r.receive_blog_id,  r.receive_blog_name)  + '</td>'
@@ -569,7 +613,7 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             ];
             var headerCols = [
                 'SKU', 'Tên hàng', 'Tồn hiện tại', 'Tồn min', 'Tồn max', 'Chênh lệch',
-                'Loại đề xuất', 'SL đề xuất',
+                'Mức ưu tiên', 'Loại đề xuất', 'SL đề xuất',
                 'Blog ID yêu cầu', 'Tên shop yêu cầu',
                 'Blog ID chuyển hàng', 'Tên shop chuyển hàng',
                 'Blog ID nhận hàng', 'Tên shop nhận hàng',
@@ -581,7 +625,7 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
                     r.sku, r.name,
                     Number(r.current_stock) || 0, Number(r.min_qty) || 0, Number(r.max_qty) || 0,
                     Number(r.diff) || 0,
-                    r.intent_label, Number(r.quantity) || 0,
+                    r.priority_label || '', r.intent_label, Number(r.quantity) || 0,
                     r.request_blog_id || '', r.request_blog_name || '',
                     r.transfer_blog_id || '', r.transfer_blog_name || '',
                     r.receive_blog_id || '',  r.receive_blog_name  || '',
@@ -591,13 +635,13 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
 
             var ws = XLSX.utils.aoa_to_sheet(aoa);
             ws['!merges'] = [
-                {s:{r:0,c:0}, e:{r:0,c:14}},
-                {s:{r:1,c:0}, e:{r:1,c:14}},
-                {s:{r:2,c:0}, e:{r:2,c:14}}
+                {s:{r:0,c:0}, e:{r:0,c:15}},
+                {s:{r:1,c:0}, e:{r:1,c:15}},
+                {s:{r:2,c:0}, e:{r:2,c:15}}
             ];
             ws['!cols'] = [
                 {wch:18},{wch:36},{wch:12},{wch:8},{wch:8},{wch:12},
-                {wch:24},{wch:12},
+                {wch:18},{wch:24},{wch:12},
                 {wch:14},{wch:24},{wch:16},{wch:24},{wch:14},{wch:24},{wch:40}
             ];
 
@@ -650,6 +694,17 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
     $(document).on('change', '#poa-filter-intent', function () {
         state.filterIntent = $(this).val();
         renderRows();
+    });
+    $(document).on('change', '#poa-filter-priority', function () {
+        state.filterPriority = $(this).val();
+        $('#poa-card-urgent').toggleClass('active', state.filterPriority === 'urgent');
+        renderRows();
+    });
+    // Click vào card "DƯỚI MIN" → bật/tắt filter nhanh
+    $(document).on('click', '#poa-card-urgent', function () {
+        var $f = $('#poa-filter-priority');
+        var newVal = ($f.val() === 'urgent') ? '' : 'urgent';
+        $f.val(newVal).trigger('change');
     });
 
     $(function () { scan(); });
