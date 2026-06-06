@@ -14,6 +14,7 @@ class TGS_POA_Ajax
     public static function init()
     {
         add_action('wp_ajax_tgs_poa_scan',          [__CLASS__, 'ajax_scan']);
+        add_action('wp_ajax_tgs_poa_supplier_stats',[__CLASS__, 'ajax_supplier_stats']);
         add_action('wp_ajax_tgs_poa_export_excel',  [__CLASS__, 'ajax_export']);
         add_action('wp_ajax_tgs_poa_create',        [__CLASS__, 'ajax_create']);
         add_action('wp_ajax_tgs_poa_list',          [__CLASS__, 'ajax_list']);
@@ -43,6 +44,198 @@ class TGS_POA_Ajax
         $bid = (int) get_current_blog_id();
         $result = TGS_POA_Helper::scan_blog($bid);
         wp_send_json_success($result);
+    }
+
+    /**
+     * Supplier-centric view for smart stock scan.
+     * Groups buy-needed scan rows by wp_global_supplier_product.product_sku.
+     */
+    public static function ajax_supplier_stats()
+    {
+        global $wpdb;
+        self::check();
+
+        $bid = (int) get_current_blog_id();
+        $result = TGS_POA_Helper::scan_blog($bid);
+        $suggestions = isset($result['suggestions']) && is_array($result['suggestions']) ? $result['suggestions'] : [];
+
+        $buy_rows = array_values(array_filter($suggestions, function ($row) {
+            $intent = isset($row['intent']) ? (string) $row['intent'] : '';
+            $qty = isset($row['quantity']) ? (float) $row['quantity'] : 0;
+            $max = isset($row['max_qty']) ? (float) $row['max_qty'] : 0;
+            $cur = isset($row['current_stock']) ? (float) $row['current_stock'] : 0;
+            return $qty > 0
+                && $max > 0
+                && $cur < $max
+                && in_array($intent, ['warehouse_purchase_more', 'shop_request_from_warehouse'], true);
+        }));
+
+        $skus = [];
+        foreach ($buy_rows as $row) {
+            $sku = isset($row['sku']) ? trim((string) $row['sku']) : '';
+            if ($sku !== '') {
+                $skus[$sku] = true;
+            }
+        }
+
+        $supplier_by_sku = [];
+        $supplier_count_by_sku = [];
+        if (!empty($skus)) {
+            $link_table = $wpdb->base_prefix . 'global_supplier_product';
+            $supplier_table = $wpdb->base_prefix . 'global_supplier';
+            $link_exists = ((string) $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $link_table)) === $link_table);
+            $supplier_exists = ((string) $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $supplier_table)) === $supplier_table);
+
+            if ($link_exists && $supplier_exists) {
+                $sku_values = array_keys($skus);
+                foreach (array_chunk($sku_values, 400) as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '%s'));
+                    $sql = "SELECT gsp.product_sku,
+                                   gs.supplier_id,
+                                   gs.supplier_code,
+                                   gs.supplier_name,
+                                   gs.supplier_phone,
+                                   gs.supplier_email
+                            FROM {$link_table} gsp
+                            INNER JOIN {$supplier_table} gs
+                               ON gs.supplier_id = gsp.supplier_id
+                              AND gs.is_deleted = 0
+                            WHERE gsp.product_sku IN ({$placeholders})
+                              AND gsp.product_sku IS NOT NULL
+                              AND TRIM(gsp.product_sku) <> ''
+                            ORDER BY gs.supplier_name ASC, gs.supplier_code ASC";
+                    $rows = $wpdb->get_results($wpdb->prepare($sql, ...$chunk), ARRAY_A);
+                    foreach ((array) $rows as $r) {
+                        $sku = trim((string) ($r['product_sku'] ?? ''));
+                        $sid = (int) ($r['supplier_id'] ?? 0);
+                        if ($sku === '' || $sid <= 0) {
+                            continue;
+                        }
+                        if (!isset($supplier_by_sku[$sku])) {
+                            $supplier_by_sku[$sku] = [];
+                        }
+                        $supplier_by_sku[$sku][$sid] = [
+                            'supplier_id' => $sid,
+                            'supplier_code' => (string) ($r['supplier_code'] ?? ''),
+                            'supplier_name' => (string) ($r['supplier_name'] ?? ''),
+                            'supplier_phone' => (string) ($r['supplier_phone'] ?? ''),
+                            'supplier_email' => (string) ($r['supplier_email'] ?? ''),
+                        ];
+                    }
+                }
+            }
+        }
+
+        foreach ($supplier_by_sku as $sku => $suppliers) {
+            $supplier_count_by_sku[$sku] = count($suppliers);
+        }
+
+        $groups = [];
+        $no_supplier_key = 'none';
+        $supplier_edit_base = admin_url('admin.php?page=tgs-shop-management&view=supplier-global-detail&id=');
+        $supplier_list_url = admin_url('admin.php?page=tgs-shop-management&view=suppliers-global');
+        $purchase_base_url = admin_url('admin.php?page=tgs-shop-management&view=purchase-add');
+
+        $ensure_group = function ($key, $supplier) use (&$groups, $supplier_edit_base, $supplier_list_url, $purchase_base_url) {
+            if (isset($groups[$key])) {
+                return;
+            }
+
+            $sid = isset($supplier['supplier_id']) ? (int) $supplier['supplier_id'] : 0;
+            $groups[$key] = [
+                'key' => $key,
+                'supplier_id' => $sid,
+                'supplier_code' => $sid > 0 ? (string) ($supplier['supplier_code'] ?? '') : '',
+                'supplier_name' => $sid > 0 ? (string) ($supplier['supplier_name'] ?? '') : 'Chua co NCC',
+                'supplier_phone' => $sid > 0 ? (string) ($supplier['supplier_phone'] ?? '') : '',
+                'supplier_email' => $sid > 0 ? (string) ($supplier['supplier_email'] ?? '') : '',
+                'edit_url' => $sid > 0 ? ($supplier_edit_base . $sid) : $supplier_list_url,
+                'purchase_url' => $sid > 0 ? add_query_arg(['supplier_id' => $sid], $purchase_base_url) : '',
+                'items' => [],
+                'count_total' => 0,
+                'count_urgent' => 0,
+                'count_normal' => 0,
+                'sum_qty' => 0,
+            ];
+        };
+
+        foreach ($buy_rows as $row) {
+            $sku = isset($row['sku']) ? trim((string) $row['sku']) : '';
+            if ($sku === '') {
+                continue;
+            }
+
+            $suppliers = $supplier_by_sku[$sku] ?? [];
+            if (empty($suppliers)) {
+                $ensure_group($no_supplier_key, ['supplier_id' => 0]);
+                $item = $row;
+                $item['supplier_id'] = 0;
+                $item['supplier_count'] = 0;
+                $item['supplier_warning'] = 'SKU chua gan voi NCC nao.';
+                $groups[$no_supplier_key]['items'][] = $item;
+            } else {
+                $supplier_count = $supplier_count_by_sku[$sku] ?? count($suppliers);
+                foreach ($suppliers as $supplier) {
+                    $sid = (int) ($supplier['supplier_id'] ?? 0);
+                    if ($sid <= 0) {
+                        continue;
+                    }
+                    $key = 's' . $sid;
+                    $ensure_group($key, $supplier);
+                    $item = $row;
+                    $item['supplier_id'] = $sid;
+                    $item['supplier_count'] = $supplier_count;
+                    $item['supplier_warning'] = $supplier_count > 1 ? 'SKU nay dang gan voi nhieu NCC.' : '';
+                    $groups[$key]['items'][] = $item;
+                }
+            }
+        }
+
+        foreach ($groups as $key => &$group) {
+            $group['count_total'] = count($group['items']);
+            $group['count_urgent'] = 0;
+            $group['count_normal'] = 0;
+            $group['sum_qty'] = 0;
+            foreach ($group['items'] as $item) {
+                if (($item['priority'] ?? '') === 'urgent') {
+                    $group['count_urgent']++;
+                } else {
+                    $group['count_normal']++;
+                }
+                $group['sum_qty'] += (float) ($item['quantity'] ?? 0);
+            }
+            $group['sum_qty'] = round($group['sum_qty'], 3);
+        }
+        unset($group);
+
+        $no_supplier_count = isset($groups[$no_supplier_key]) ? count($groups[$no_supplier_key]['items']) : 0;
+        $groups = array_values($groups);
+        usort($groups, function ($a, $b) use ($no_supplier_key) {
+            if (($a['key'] ?? '') === $no_supplier_key) return 1;
+            if (($b['key'] ?? '') === $no_supplier_key) return -1;
+            if (($a['count_urgent'] ?? 0) !== ($b['count_urgent'] ?? 0)) {
+                return ($b['count_urgent'] ?? 0) <=> ($a['count_urgent'] ?? 0);
+            }
+            if (($a['sum_qty'] ?? 0) !== ($b['sum_qty'] ?? 0)) {
+                return ($b['sum_qty'] ?? 0) <=> ($a['sum_qty'] ?? 0);
+            }
+            return strcasecmp((string) ($a['supplier_name'] ?? ''), (string) ($b['supplier_name'] ?? ''));
+        });
+
+        wp_send_json_success([
+            'blog_id' => $result['blog_id'] ?? $bid,
+            'blog_name' => $result['blog_name'] ?? TGS_POA_Helper::get_blog_name($bid),
+            'source_kind' => $result['source_kind'] ?? '',
+            'parent_warehouse_id' => $result['parent_warehouse_id'] ?? 0,
+            'parent_warehouse_name' => $result['parent_warehouse_name'] ?? '',
+            'groups' => $groups,
+            'summary' => [
+                'supplier_count' => count(array_filter($groups, function ($g) { return (int) ($g['supplier_id'] ?? 0) > 0; })),
+                'sku_count' => count($skus),
+                'row_count' => count($buy_rows),
+                'no_supplier_count' => $no_supplier_count,
+            ],
+        ]);
     }
 
     public static function ajax_export()
