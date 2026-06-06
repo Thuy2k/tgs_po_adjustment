@@ -56,6 +56,12 @@ class TGS_POA_Ajax
         self::check();
 
         $bid = (int) get_current_blog_id();
+        if (!TGS_POA_Helper::is_warehouse($bid)) {
+            wp_send_json_error([
+                'message' => 'Chỉ kho mới dùng được thống kê thông minh cần mua từ nhà cung cấp.',
+            ], 403);
+        }
+
         $result = TGS_POA_Helper::scan_blog($bid);
         $suggestions = isset($result['suggestions']) && is_array($result['suggestions']) ? $result['suggestions'] : [];
 
@@ -146,7 +152,7 @@ class TGS_POA_Ajax
                 'key' => $key,
                 'supplier_id' => $sid,
                 'supplier_code' => $sid > 0 ? (string) ($supplier['supplier_code'] ?? '') : '',
-                'supplier_name' => $sid > 0 ? (string) ($supplier['supplier_name'] ?? '') : 'Chua co NCC',
+                'supplier_name' => $sid > 0 ? (string) ($supplier['supplier_name'] ?? '') : 'Chưa có NCC',
                 'supplier_phone' => $sid > 0 ? (string) ($supplier['supplier_phone'] ?? '') : '',
                 'supplier_email' => $sid > 0 ? (string) ($supplier['supplier_email'] ?? '') : '',
                 'edit_url' => $sid > 0 ? ($supplier_edit_base . $sid) : $supplier_list_url,
@@ -171,7 +177,7 @@ class TGS_POA_Ajax
                 $item = $row;
                 $item['supplier_id'] = 0;
                 $item['supplier_count'] = 0;
-                $item['supplier_warning'] = 'SKU chua gan voi NCC nao.';
+                $item['supplier_warning'] = 'SKU chưa gắn với NCC nào.';
                 $groups[$no_supplier_key]['items'][] = $item;
             } else {
                 $supplier_count = $supplier_count_by_sku[$sku] ?? count($suppliers);
@@ -185,7 +191,7 @@ class TGS_POA_Ajax
                     $item = $row;
                     $item['supplier_id'] = $sid;
                     $item['supplier_count'] = $supplier_count;
-                    $item['supplier_warning'] = $supplier_count > 1 ? 'SKU nay dang gan voi nhieu NCC.' : '';
+                    $item['supplier_warning'] = $supplier_count > 1 ? 'SKU này đang gắn với nhiều NCC.' : '';
                     $groups[$key]['items'][] = $item;
                 }
             }

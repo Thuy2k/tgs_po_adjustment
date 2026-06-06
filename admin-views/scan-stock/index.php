@@ -40,9 +40,11 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             <button id="btn-poa-rescan" class="btn btn-outline-primary">
                 <i class="bx bx-refresh me-1"></i> Quét lại
             </button>
+            <?php if ($is_kho_now): ?>
             <button id="btn-poa-supplier-stats" class="btn btn-outline-dark">
-                <i class="bx bx-network-chart me-1"></i> Sieu thong ke NCC
+                <i class="bx bx-network-chart me-1"></i> Thống kê thông minh cần mua từ nhà cung cấp
             </button>
+            <?php endif; ?>
             <button id="btn-poa-export" class="btn btn-success">
                 <i class="bx bxs-file-export me-1"></i> Xuất Excel đề xuất
             </button>
@@ -238,10 +240,10 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
       <div class="modal-header">
         <div>
           <h5 class="modal-title mb-1">
-            <i class="bx bx-network-chart me-1"></i> Sieu thong ke NCC can mua
+            <i class="bx bx-network-chart me-1"></i> Thống kê thông minh cần mua từ nhà cung cấp
           </h5>
           <div class="small text-muted" id="poa-supplier-stats-subtitle">
-            Nhom SKU duoi Max/duoi Min theo NCC dang gan trong global_supplier_product.
+            Nhóm SKU dưới Max/dưới Min theo nhà cung cấp đang gắn trong global_supplier_product.
           </div>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -252,42 +254,42 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             <div class="p-3 border-bottom bg-white">
               <div class="input-group input-group-sm">
                 <span class="input-group-text"><i class="bx bx-search"></i></span>
-                <input type="text" class="form-control" id="poa-supplier-search" placeholder="Tim NCC, ma, SDT...">
+                <input type="text" class="form-control" id="poa-supplier-search" placeholder="Tìm NCC, mã, SĐT...">
               </div>
-              <div class="small text-muted mt-2" id="poa-supplier-count-line">Chua tai du lieu.</div>
+              <div class="small text-muted mt-2" id="poa-supplier-count-line">Chưa tải dữ liệu.</div>
             </div>
             <div class="poa-supplier-tabs" id="poa-supplier-tabs">
-              <div class="p-4 text-center text-muted">Bam Tai du lieu de xem NCC.</div>
+              <div class="p-4 text-center text-muted">Đang chờ tải dữ liệu NCC.</div>
             </div>
           </aside>
           <section class="poa-supplier-main">
             <div class="p-3" id="poa-supplier-active-head">
-              <div class="text-muted">Chon NCC ben trai de xem SKU can mua.</div>
+              <div class="text-muted">Chọn NCC bên trái để xem SKU cần mua.</div>
             </div>
             <div class="poa-supplier-filterbar p-3">
               <div class="row g-2 align-items-center">
                 <div class="col-lg-5">
                   <div class="input-group input-group-sm">
                     <span class="input-group-text"><i class="bx bx-search"></i></span>
-                    <input type="text" class="form-control" id="poa-supplier-product-search" placeholder="Tim SKU hoac ten hang...">
+                    <input type="text" class="form-control" id="poa-supplier-product-search" placeholder="Tìm SKU hoặc tên hàng...">
                   </div>
                 </div>
                 <div class="col-lg-3">
                   <select class="form-select form-select-sm" id="poa-supplier-priority-filter">
-                    <option value="">Tat ca muc uu tien</option>
-                    <option value="urgent">Chi duoi MIN</option>
-                    <option value="normal">Duoi MAX</option>
+                    <option value="">Tất cả các mức ưu tiên</option>
+                    <option value="urgent">Chỉ dưới MIN</option>
+                    <option value="normal">Dưới MAX</option>
                   </select>
                 </div>
                 <div class="col-lg-3">
                   <select class="form-select form-select-sm" id="poa-supplier-multi-filter">
-                    <option value="">Tat ca SKU</option>
-                    <option value="multi">SKU co nhieu NCC</option>
-                    <option value="single">SKU chi 1 NCC</option>
+                    <option value="">Tất cả SKU</option>
+                    <option value="multi">SKU có nhiều NCC</option>
+                    <option value="single">SKU chỉ 1 NCC</option>
                   </select>
                 </div>
                 <div class="col-lg-1 text-end">
-                  <button type="button" class="btn btn-sm btn-outline-primary" id="btn-poa-supplier-reload" title="Tai lai AJAX">
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="btn-poa-supplier-reload" title="Tải lại AJAX">
                     <i class="bx bx-refresh"></i>
                   </button>
                 </div>
@@ -299,30 +301,30 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
                   <tr>
                     <th style="width:40px"><input type="checkbox" class="form-check-input" id="poa-supplier-check-all"></th>
                     <th>SKU</th>
-                    <th>Ten hang</th>
-                    <th class="text-end">Ton</th>
+                    <th>Tên hàng</th>
+                    <th class="text-end">Tồn</th>
                     <th class="text-end">Min</th>
                     <th class="text-end">Max</th>
-                    <th class="text-end">SL de xuat</th>
-                    <th>Uu tien</th>
-                    <th>Ghi chu NCC</th>
+                    <th class="text-end">SL đề xuất</th>
+                    <th>Ưu tiên</th>
+                    <th>Ghi chú NCC</th>
                   </tr>
                 </thead>
                 <tbody id="poa-supplier-products">
-                  <tr><td colspan="9" class="text-center text-muted py-5">Chua tai du lieu.</td></tr>
+                  <tr><td colspan="9" class="text-center text-muted py-5">Chưa tải dữ liệu.</td></tr>
                 </tbody>
               </table>
             </div>
             <div class="poa-supplier-actions p-3 d-flex flex-wrap gap-2 align-items-center">
-              <div class="me-auto small text-muted" id="poa-supplier-selected-line">Chua chon SKU nao.</div>
+              <div class="me-auto small text-muted" id="poa-supplier-selected-line">Chưa chọn SKU nào.</div>
               <a class="btn btn-outline-primary disabled" href="#" target="_blank" rel="noopener" id="btn-poa-open-purchase">
-                <i class="bx bx-cart me-1"></i> Mo phieu mua hang
+                <i class="bx bx-cart me-1"></i> Mở phiếu mua hàng
               </a>
               <a class="btn btn-outline-secondary disabled" href="#" target="_blank" rel="noopener" id="btn-poa-open-supplier">
-                <i class="bx bx-link-external me-1"></i> Sua/Gan NCC
+                <i class="bx bx-link-external me-1"></i> Sửa/Gắn NCC
               </a>
               <button type="button" class="btn btn-primary" id="btn-poa-supplier-create-po" disabled>
-                <i class="bx bx-check-double me-1"></i> Tao PO tu SKU da chon
+                <i class="bx bx-check-double me-1"></i> Tạo PO từ SKU đã chọn
               </button>
             </div>
           </section>
@@ -651,11 +653,11 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         var total = state.supplierStats.groups.length;
         var summary = state.supplierStats.summary || {};
         $('#poa-supplier-count-line').text(total
-            ? (groups.length + ' / ' + total + ' NCC, ' + (summary.row_count || 0) + ' SKU can mua')
-            : 'Chua co NCC nao co SKU can mua.');
+            ? (groups.length + ' / ' + total + ' NCC, ' + (summary.row_count || 0) + ' SKU cần mua')
+            : 'Chưa có NCC nào có SKU cần mua.');
 
         if (!groups.length) {
-            $tabs.html('<div class="p-4 text-center text-muted">Khong tim thay NCC phu hop.</div>');
+            $tabs.html('<div class="p-4 text-center text-muted">Không tìm thấy NCC phù hợp.</div>');
             return;
         }
 
@@ -668,15 +670,15 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         groups.forEach(function (g) {
             var active = String(g.key) === String(state.supplierStats.activeKey) ? ' active' : '';
             var code = g.supplier_code ? escHtml(g.supplier_code) + ' - ' : '';
-            var phone = g.supplier_phone ? escHtml(g.supplier_phone) : 'Chua co SDT';
+            var phone = g.supplier_phone ? escHtml(g.supplier_phone) : 'Chưa có SĐT';
             var urgent = parseInt(g.count_urgent || 0, 10);
             html += '<button type="button" class="poa-supplier-tab' + active + '" data-key="' + escHtml(g.key) + '">'
                 + '<div class="d-flex justify-content-between gap-2">'
                 + '<div class="poa-supplier-tab-title">' + code + escHtml(g.supplier_name || 'NCC') + '</div>'
                 + '<span class="badge bg-label-primary">' + fmt(g.count_total || 0) + '</span>'
                 + '</div>'
-                + '<div class="poa-supplier-tab-sub">' + phone + (urgent > 0 ? ' - ' + urgent + ' duoi MIN' : '') + '</div>'
-                + '<div class="poa-supplier-tab-sub">Tong SL de xuat: ' + fmt(g.sum_qty || 0) + '</div>'
+                + '<div class="poa-supplier-tab-sub">' + phone + (urgent > 0 ? ' - ' + urgent + ' dưới MIN' : '') + '</div>'
+                + '<div class="poa-supplier-tab-sub">Tổng SL đề xuất: ' + fmt(g.sum_qty || 0) + '</div>'
                 + '</button>';
         });
         $tabs.html(html);
@@ -691,19 +693,19 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         var $checkAll = $('#poa-supplier-check-all');
 
         if (!group) {
-            $('#poa-supplier-active-head').html('<div class="text-muted">Chon NCC ben trai de xem SKU can mua.</div>');
-            $body.html('<tr><td colspan="9" class="text-center text-muted py-5">Chua chon NCC.</td></tr>');
+            $('#poa-supplier-active-head').html('<div class="text-muted">Chọn NCC bên trái để xem SKU cần mua.</div>');
+            $body.html('<tr><td colspan="9" class="text-center text-muted py-5">Chưa chọn NCC.</td></tr>');
             $purchase.addClass('disabled').attr('href', '#');
             $supplier.addClass('disabled').attr('href', '#');
             $create.prop('disabled', true);
-            $('#poa-supplier-selected-line').text('Chua chon SKU nao.');
+            $('#poa-supplier-selected-line').text('Chưa chọn SKU nào.');
             $checkAll.prop('checked', false).prop('indeterminate', false);
             return;
         }
 
         var supplierTitle = (group.supplier_code ? escHtml(group.supplier_code) + ' - ' : '') + escHtml(group.supplier_name || 'NCC');
         var supplierMeta = [
-            group.supplier_phone ? 'SDT: ' + escHtml(group.supplier_phone) : '',
+            group.supplier_phone ? 'SĐT: ' + escHtml(group.supplier_phone) : '',
             group.supplier_email ? 'Email: ' + escHtml(group.supplier_email) : ''
         ].filter(Boolean).join(' | ');
         var noSupplier = parseInt(group.supplier_id || 0, 10) <= 0;
@@ -711,12 +713,12 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             '<div class="d-flex flex-wrap justify-content-between gap-2">'
             + '<div>'
             + '<div class="h5 mb-1">' + supplierTitle + '</div>'
-            + '<div class="small text-muted">' + (supplierMeta || (noSupplier ? 'SKU chua gan voi NCC nao.' : 'NCC dang duoc chon.')) + '</div>'
-            + '<div class="small text-muted mt-1">Chi hien SKU duoi Max/duoi Min cua dot quet hien tai.</div>'
+            + '<div class="small text-muted">' + (supplierMeta || (noSupplier ? 'SKU chưa gắn với NCC nào.' : 'NCC đang được chọn.')) + '</div>'
+            + '<div class="small text-muted mt-1">Chỉ hiện SKU dưới Max/dưới Min của đợt quét hiện tại.</div>'
             + '</div>'
             + '<div class="text-end small">'
-            + '<span class="badge bg-label-danger me-1">' + fmt(group.count_urgent || 0) + ' duoi MIN</span>'
-            + '<span class="badge bg-label-warning">' + fmt(group.count_normal || 0) + ' duoi MAX</span>'
+            + '<span class="badge bg-label-danger me-1">' + fmt(group.count_urgent || 0) + ' dưới MIN</span>'
+            + '<span class="badge bg-label-warning">' + fmt(group.count_normal || 0) + ' dưới MAX</span>'
             + '</div>'
             + '</div>'
         );
@@ -728,7 +730,7 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
 
         var items = filteredSupplierItems(group);
         if (!items.length) {
-            $body.html('<tr><td colspan="9"><div class="poa-supplier-empty">Khong co SKU phu hop bo loc.</div></td></tr>');
+            $body.html('<tr><td colspan="9"><div class="poa-supplier-empty">Không có SKU phù hợp bộ lọc.</div></td></tr>');
             updateSupplierSelectedCount();
             return;
         }
@@ -741,8 +743,8 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
                 ? '<span class="badge bg-label-warning">' + escHtml(item.supplier_warning) + '</span>'
                 : '<span class="text-muted">-</span>';
             var prio = (item.priority || '') === 'urgent'
-                ? '<span class="badge poa-badge-urgent">DUOI MIN</span>'
-                : '<span class="badge bg-label-warning">DUOI MAX</span>';
+                ? '<span class="badge poa-badge-urgent">DƯỚI MIN</span>'
+                : '<span class="badge bg-label-warning">DƯỚI MAX</span>';
             html += '<tr data-key="' + escHtml(key) + '">'
                 + '<td><input type="checkbox" class="form-check-input poa-supplier-row-check" data-key="' + escHtml(key) + '"' + checked + '></td>'
                 + '<td><code>' + escHtml(item.sku || '') + '</code></td>'
@@ -771,8 +773,8 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         }
 
         $('#poa-supplier-selected-line').text(selected
-            ? ('Da chon ' + selected + ' SKU trong NCC nay.')
-            : 'Chua chon SKU nao.');
+            ? ('Đã chọn ' + selected + ' SKU trong NCC này.')
+            : 'Chưa chọn SKU nào.');
         $('#btn-poa-supplier-create-po').prop('disabled', selected === 0);
         $('#poa-supplier-check-all')
             .prop('checked', visible > 0 && selected === visible)
@@ -787,16 +789,16 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         }
 
         state.supplierStats.loading = true;
-        $('#poa-supplier-tabs').html('<div class="p-4 text-center text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Dang tai NCC...</div>');
-        $('#poa-supplier-products').html('<tr><td colspan="9" class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-1"></span>Dang tai du lieu...</td></tr>');
-        $('#poa-supplier-count-line').text('Dang tai du lieu...');
+        $('#poa-supplier-tabs').html('<div class="p-4 text-center text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Đang tải NCC...</div>');
+        $('#poa-supplier-products').html('<tr><td colspan="9" class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-1"></span>Đang tải dữ liệu...</td></tr>');
+        $('#poa-supplier-count-line').text('Đang tải dữ liệu...');
 
         $.post(POA.ajax, {
             action: 'tgs_poa_supplier_stats',
             nonce: POA.nonce
         }).done(function (resp) {
             if (!resp || !resp.success) {
-                var msg = (resp && resp.data && resp.data.message) || 'Khong tai duoc sieu thong ke NCC.';
+                var msg = (resp && resp.data && resp.data.message) || 'Không tải được thống kê thông minh cần mua từ nhà cung cấp.';
                 $('#poa-supplier-tabs').html('<div class="p-4 text-center text-danger">' + escHtml(msg) + '</div>');
                 $('#poa-supplier-products').html('<tr><td colspan="9" class="text-center text-danger py-5">' + escHtml(msg) + '</td></tr>');
                 return;
@@ -807,11 +809,11 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             state.supplierStats.loaded = true;
             state.supplierStats.selected = {};
             state.supplierStats.activeKey = state.supplierStats.groups.length ? state.supplierStats.groups[0].key : '';
-            $('#poa-supplier-stats-subtitle').text('Website: ' + (d.blog_name || POA.blogName) + ' #' + (d.blog_id || POA.bid) + ' - ' + ((d.summary && d.summary.row_count) || 0) + ' SKU can mua.');
+            $('#poa-supplier-stats-subtitle').text('Website: ' + (d.blog_name || POA.blogName) + ' #' + (d.blog_id || POA.bid) + ' - ' + ((d.summary && d.summary.row_count) || 0) + ' SKU cần mua.');
             renderSupplierStats();
         }).fail(function () {
-            $('#poa-supplier-tabs').html('<div class="p-4 text-center text-danger">Loi mang / may chu.</div>');
-            $('#poa-supplier-products').html('<tr><td colspan="9" class="text-center text-danger py-5">Loi mang / may chu.</td></tr>');
+            $('#poa-supplier-tabs').html('<div class="p-4 text-center text-danger">Lỗi mạng / máy chủ.</div>');
+            $('#poa-supplier-products').html('<tr><td colspan="9" class="text-center text-danger py-5">Lỗi mạng / máy chủ.</td></tr>');
         }).always(function () {
             state.supplierStats.loading = false;
         });
@@ -832,11 +834,11 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             }
         });
         if (!items.length) {
-            alert('Chua chon SKU nao.');
+            alert('Chưa chọn SKU nào.');
             return;
         }
         state.reviewLaunchMode = 'supplier_stats';
-        $('#poa-review-note').val('Tao PO tu sieu thong ke NCC: ' + (group.supplier_code ? group.supplier_code + ' - ' : '') + (group.supplier_name || 'NCC'));
+        $('#poa-review-note').val('Tạo PO từ thống kê thông minh cần mua từ nhà cung cấp: ' + (group.supplier_code ? group.supplier_code + ' - ' : '') + (group.supplier_name || 'NCC'));
         openReviewModal(items);
     }
 
@@ -1124,6 +1126,11 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         renderSupplierProducts();
     });
     $(document).on('click', '#btn-poa-supplier-create-po', openSupplierPOReview);
+    $(document).on('hidden.bs.modal', '#poaReviewModal', function () {
+        if ($('#poaSupplierStatsModal').hasClass('show')) {
+            $('body').addClass('modal-open');
+        }
+    });
 
     $(document).on('click', '#btn-poa-rescan', scan);
     $(document).on('click', '#btn-poa-export', exportExcel);
