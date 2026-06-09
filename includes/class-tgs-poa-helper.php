@@ -77,36 +77,94 @@ class TGS_POA_Helper
         return $name ?: ('Blog #' . $bid);
     }
 
+    private static function ensure_global_product_source()
+    {
+        if (!class_exists('TGS_Global_Product_Source')) {
+            $source_file = WP_PLUGIN_DIR . '/tgs_shop_management/functions/class-tgs-global-product-source.php';
+            if (is_readable($source_file)) {
+                require_once $source_file;
+            }
+        }
+
+        return class_exists('TGS_Global_Product_Source');
+    }
+
     /**
      * Lấy tồn hiện tại của các SKU trên 1 blog.
-     * Dùng cột local_product_quantity_no_tracking ở wp_<bid>_local_product_name.
+     * Tồn lấy qua ledger/API global product, không đọc cột tồn ở bảng sản phẩm local.
      * @param int $bid
      * @param string[] $skus
      * @return array<string,float> [sku => qty]
      */
     public static function get_current_stock_map($bid, array $skus)
     {
-        global $wpdb;
         $bid = (int) $bid;
         $skus = array_values(array_unique(array_filter(array_map('strval', $skus))));
         if (!$bid || empty($skus)) return [];
 
-        $tbl = $wpdb->get_blog_prefix($bid) . 'local_product_name';
-        $exists = ((string) $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $tbl)) === $tbl);
-        if (!$exists) return [];
+        if (!self::ensure_global_product_source()) {
+            return array_fill_keys($skus, 0.0);
+        }
 
-        $place = implode(',', array_fill(0, count($skus), '%s'));
-        $sql = "SELECT local_product_sku AS sku, COALESCE(local_product_quantity_no_tracking, 0) AS qty
-                FROM {$tbl}
-                WHERE local_product_sku IN ({$place})
-                  AND (is_deleted = 0 OR is_deleted IS NULL)";
-        $rows = $wpdb->get_results($wpdb->prepare($sql, ...$skus), ARRAY_A);
+        $stocks = TGS_Global_Product_Source::get_stock_for_skus($skus, $bid);
 
         $map = [];
-        foreach ((array) $rows as $r) {
-            $map[(string) $r['sku']] = (float) $r['qty'];
+        foreach ($skus as $sku) {
+            $stock = $stocks[$sku] ?? [];
+            $map[$sku] = (float) ($stock['projected_stock'] ?? $stock['actual_stock'] ?? 0);
         }
         return $map;
+    }
+
+    /**
+     * Tìm SKU từ catalog global, trả shape cũ cho UI manual PO.
+     *
+     * @return array<int,array{sku:string,name:string,qty:float}>
+     */
+    public static function search_global_products_for_blog($bid, $q = '', $limit = 30)
+    {
+        $bid = (int) $bid;
+        $limit = max(1, min(100, (int) $limit));
+        $q = trim((string) $q);
+
+        if (!$bid || !self::ensure_global_product_source()) {
+            return [];
+        }
+
+        $args = [
+            'search' => $q,
+            'blog_id' => $bid,
+            'with_stock' => true,
+            'with_local_aliases' => true,
+            'parent_only' => false,
+            'require_sku' => true,
+            'tracking_filter' => 'all',
+            'status_filter' => 'all',
+            'order_by' => 'global_product_name_id',
+            'order_dir' => 'DESC',
+            'per_page' => $limit,
+        ];
+
+        if ($q !== '') {
+            $args['order_by'] = 'global_product_name';
+            $args['order_dir'] = 'ASC';
+        }
+
+        $result = TGS_Global_Product_Source::query_products($args);
+        $rows = [];
+        foreach ((array) ($result['items'] ?? []) as $item) {
+            $sku = trim((string) ($item['global_product_sku'] ?? $item['local_product_sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $rows[] = [
+                'sku' => $sku,
+                'name' => (string) ($item['global_product_name'] ?? $item['local_product_name'] ?? ''),
+                'qty' => (float) ($item['projected_stock'] ?? $item['actual_stock'] ?? 0),
+            ];
+        }
+
+        return $rows;
     }
 
     /**

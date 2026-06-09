@@ -664,7 +664,6 @@ class TGS_POA_Ajax
      */
     public static function ajax_search_sku()
     {
-        global $wpdb;
         self::check();
         $bid   = isset($_POST['blog_id']) ? (int) $_POST['blog_id'] : (int) get_current_blog_id();
         $q     = isset($_POST['q']) ? sanitize_text_field(wp_unslash($_POST['q'])) : '';
@@ -672,47 +671,8 @@ class TGS_POA_Ajax
 
         if (!$bid) wp_send_json_error(['message' => 'Thiếu blog_id.']);
 
-        $tbl = $wpdb->get_blog_prefix($bid) . 'local_product_name';
-        $exists = ((string) $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $tbl)) === $tbl);
-        if (!$exists) wp_send_json_success(['rows' => [], 'debug' => 'table_not_found:' . $tbl]);
-
-        $base_select = "SELECT local_product_sku AS sku,
-                               local_product_name AS name,
-                               COALESCE(local_product_quantity_no_tracking, 0) AS qty
-                        FROM {$tbl}
-                        WHERE (is_deleted = 0 OR is_deleted IS NULL)";
-
-        $q_trim = trim((string) $q);
-        if ($q_trim === '') {
-            $sql = $base_select . " ORDER BY local_product_name_id DESC LIMIT %d";
-            $rows = $wpdb->get_results($wpdb->prepare($sql, $limit), ARRAY_A);
-            wp_send_json_success(['rows' => $rows ?: []]);
-        }
-
-        // Tách token (theo khoảng trắng), bỏ token rỗng, giới hạn 5 token
-        $tokens = array_values(array_filter(
-            preg_split('/\s+/u', $q_trim) ?: [],
-            function ($t) { return trim($t) !== ''; }
-        ));
-        if (count($tokens) > 5) $tokens = array_slice($tokens, 0, 5);
-
-        $where_parts = [];
-        $args        = [];
-        foreach ($tokens as $tok) {
-            $like = '%' . $wpdb->esc_like($tok) . '%';
-            // CONCAT_WS xử lý NULL an toàn
-            $where_parts[] = "CONCAT_WS(' ', local_product_sku, local_product_name) LIKE %s";
-            $args[]        = $like;
-        }
-        $where_sql = implode(' AND ', $where_parts);
-
-        $sql = $base_select
-             . " AND " . $where_sql
-             . " ORDER BY (local_product_sku LIKE %s) DESC, local_product_name_id DESC LIMIT %d";
-        $args_full = array_merge($args, [$tokens[0] . '%', $limit]);
-
-        $rows = $wpdb->get_results($wpdb->prepare($sql, ...$args_full), ARRAY_A);
-        wp_send_json_success(['rows' => $rows ?: []]);
+        $rows = TGS_POA_Helper::search_global_products_for_blog($bid, $q, $limit);
+        wp_send_json_success(['rows' => $rows]);
     }
 
     /**
