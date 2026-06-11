@@ -12,6 +12,7 @@ class TGS_POA_Menu
     const VIEW_LIST   = 'poa-list';
     const VIEW_DETAIL = 'poa-detail';
     const VIEW_CREATE = 'poa-create';
+    const VIEW_SCHEDULE = 'poa-delivery-schedule';
 
     public static function init()
     {
@@ -37,6 +38,10 @@ class TGS_POA_Menu
             'Tạo PO điều chỉnh chủ động',
             TGS_POA_PLUGIN_DIR . 'admin-views/po-create/index.php',
         ];
+        $routes[self::VIEW_SCHEDULE] = [
+            'Cấu hình lịch up hàng',
+            TGS_POA_PLUGIN_DIR . 'admin-views/delivery-schedule/index.php',
+        ];
         return $routes;
     }
 
@@ -45,8 +50,10 @@ class TGS_POA_Menu
         $url_scan   = admin_url('admin.php?page=tgs-shop-management&view=' . self::VIEW_SCAN);
         $url_list   = admin_url('admin.php?page=tgs-shop-management&view=' . self::VIEW_LIST);
         $url_create = admin_url('admin.php?page=tgs-shop-management&view=' . self::VIEW_CREATE);
+        $url_schedule = admin_url('admin.php?page=tgs-shop-management&view=' . self::VIEW_SCHEDULE);
 
         $active_scan = ($current_view === self::VIEW_SCAN) ? 'active' : '';
+        $active_schedule = ($current_view === self::VIEW_SCHEDULE) ? 'active' : '';
 
         $po_views      = [self::VIEW_LIST, self::VIEW_DETAIL, self::VIEW_CREATE];
         $active_po     = in_array($current_view, $po_views, true) ? 'active open' : '';
@@ -55,6 +62,9 @@ class TGS_POA_Menu
 
         echo '<li><a href="' . esc_url($url_scan) . '" class="' . esc_attr($active_scan) . '">'
             . '<i class="bx bx-radar"></i>Quét tồn thông minh</a></li>';
+
+        echo '<li><a href="' . esc_url($url_schedule) . '" class="' . esc_attr($active_schedule) . '">'
+            . '<i class="bx bx-calendar-week"></i>Lịch up hàng</a></li>';
 
         echo '<li class="menu-item ' . esc_attr($active_po) . '">'
             . '<a href="javascript:void(0);" class="menu-link menu-toggle">'

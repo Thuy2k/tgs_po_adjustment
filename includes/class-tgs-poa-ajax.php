@@ -38,10 +38,24 @@ class TGS_POA_Ajax
         }
     }
 
+    private static function requested_scan_blog_id()
+    {
+        $current = (int) get_current_blog_id();
+        $bid = isset($_POST['blog_id']) ? (int) $_POST['blog_id'] : $current;
+        if (!$bid) {
+            $bid = $current;
+        }
+        if (!TGS_POA_Helper::can_scan_blog($bid, $current)) {
+            wp_send_json_error(['message' => 'Website này không thuộc phạm vi quét tồn của kho hiện tại.'], 403);
+        }
+
+        return $bid;
+    }
+
     public static function ajax_scan()
     {
         self::check();
-        $bid = (int) get_current_blog_id();
+        $bid = self::requested_scan_blog_id();
         $result = TGS_POA_Helper::scan_blog($bid);
         wp_send_json_success($result);
     }
@@ -55,7 +69,7 @@ class TGS_POA_Ajax
         global $wpdb;
         self::check();
 
-        $bid = (int) get_current_blog_id();
+        $bid = self::requested_scan_blog_id();
         if (!TGS_POA_Helper::is_warehouse($bid)) {
             wp_send_json_error([
                 'message' => 'Chỉ kho mới dùng được thống kê thông minh cần mua từ nhà cung cấp.',
@@ -247,7 +261,7 @@ class TGS_POA_Ajax
     public static function ajax_export()
     {
         self::check();
-        $bid = (int) get_current_blog_id();
+        $bid = self::requested_scan_blog_id();
         $result = TGS_POA_Helper::scan_blog($bid);
 
         $rows = [];

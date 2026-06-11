@@ -19,9 +19,27 @@ $kind_label    = $is_kho_now ? 'Kho' : 'Shop';
 $kind_class    = $is_kho_now ? 'bg-label-primary' : 'bg-label-success';
 $kho_pid       = $is_kho_now ? 0 : TGS_POA_Helper::find_parent_warehouse($current_bid);
 $kho_name      = $kho_pid ? TGS_POA_Helper::get_blog_name($kho_pid) : '';
+$scan_targets  = TGS_POA_Helper::get_scan_targets($current_bid);
+$scan_target_map = [];
+foreach ($scan_targets as $target) {
+    $scan_target_map[(int) ($target['blog_id'] ?? $target['id'] ?? 0)] = $target;
+}
+$requested_scan_bid = isset($_GET['scan_blog_id']) ? (int) $_GET['scan_blog_id'] : $current_bid;
+$selected_scan_bid = isset($scan_target_map[$requested_scan_bid]) ? $requested_scan_bid : $current_bid;
+$selected_scan_target = $scan_target_map[$selected_scan_bid] ?? [
+    'blog_id' => $current_bid,
+    'id' => $current_bid,
+    'name' => $current_name,
+    'type' => $is_kho_now ? 'warehouse' : 'shop',
+    'type_label' => $kind_label,
+];
+$delivery_upcoming = class_exists('TGS_Delivery_Schedule_Helper')
+    ? TGS_Delivery_Schedule_Helper::get_upcoming_summaries($current_bid, 3, 12)
+    : ['items' => [], 'summary' => []];
 
 $ajax_url = admin_url('admin-ajax.php');
 $nonce    = wp_create_nonce('tgs_poa_nonce');
+$delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
 ?>
 <div class="container-xxl flex-grow-1 container-p-y" id="tgs-poa-page">
 
@@ -37,6 +55,11 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             </div>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+            <?php if ($is_kho_now): ?>
+            <button id="btn-poa-select-scan-target" class="btn btn-outline-secondary">
+                <i class="bx bx-store-alt me-1"></i> Chọn shop quét
+            </button>
+            <?php endif; ?>
             <button id="btn-poa-rescan" class="btn btn-outline-primary">
                 <i class="bx bx-refresh me-1"></i> Quét lại
             </button>
@@ -52,6 +75,12 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
                 <i class="bx bx-check-double me-1"></i> Tạo PO từ dòng đã chọn
                 <span class="badge bg-white text-primary ms-1" id="poa-selected-count">0</span>
             </button>
+            <button id="btn-poa-create-purchase-ticket" class="btn btn-outline-primary" disabled>
+                <i class="bx bx-cart-download me-1"></i> Tạo phiếu mua
+            </button>
+            <button id="btn-poa-create-internal-ticket" class="btn btn-outline-info" disabled>
+                <i class="bx bx-transfer-alt me-1"></i> Tạo bán nội bộ
+            </button>
         </div>
     </div>
 
@@ -61,6 +90,16 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             <div class="row g-2 align-items-center">
                 <div class="col-md-4">
                     <div class="small text-muted">Đang quét website</div>
+                    <div class="fw-semibold" id="poa-scan-target-label">
+                        <?php echo esc_html($selected_scan_target['name'] ?? $current_name); ?>
+                        <span class="badge <?php echo esc_attr(($selected_scan_target['type'] ?? '') === 'warehouse' ? 'bg-label-primary' : 'bg-label-success'); ?> ms-1" id="poa-scan-target-kind">
+                            <?php echo esc_html($selected_scan_target['type_label'] ?? $kind_label); ?>
+                        </span>
+                        <span class="text-muted small" id="poa-scan-target-id">#<?php echo (int) $selected_scan_bid; ?></span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="small text-muted">Nguồn thao tác</div>
                     <div class="fw-semibold">
                         <?php echo esc_html($current_name); ?>
                         <span class="badge <?php echo esc_attr($kind_class); ?> ms-1">
@@ -70,25 +109,42 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="small text-muted">Kho cha (gần nhất)</div>
-                    <div class="fw-semibold">
-                        <?php if ($is_kho_now): ?>
-                            <span class="text-muted">— (đây đã là kho)</span>
-                        <?php elseif ($kho_pid): ?>
-                            <?php echo esc_html($kho_name); ?>
-                            <span class="text-muted small">#<?php echo (int) $kho_pid; ?></span>
-                        <?php else: ?>
-                            <span class="text-danger">Chưa xác định được kho cha</span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <div class="col-md-4">
                     <div class="small text-muted">Thời điểm quét</div>
                     <div class="fw-semibold" id="poa-scan-time">—</div>
                 </div>
             </div>
         </div>
     </div>
+
+    <?php if (!empty($delivery_upcoming['items'])): ?>
+    <div class="card mb-3">
+        <div class="card-body py-3">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <div class="fw-semibold me-2">
+                    <i class="bx bx-calendar-event me-1"></i> Lịch up hàng gần nhất
+                </div>
+                <?php foreach ($delivery_upcoming['items'] as $item): ?>
+                    <?php
+                    $next = $item['next_delivery'] ?? [];
+                    $status = $next['status'] ?? '';
+                    $badge = $status === 'today' ? 'bg-danger' : ($status === 'soon' ? 'bg-warning' : 'bg-label-secondary');
+                    ?>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary poa-delivery-chip"
+                            data-blog-id="<?php echo (int) ($item['target_blog_id'] ?? 0); ?>">
+                        <span class="fw-semibold"><?php echo esc_html($item['target_blog_name'] ?? ('Shop #' . ($item['target_blog_id'] ?? ''))); ?></span>
+                        <span class="badge <?php echo esc_attr($badge); ?> ms-1"><?php echo esc_html($next['status_label'] ?? ''); ?></span>
+                        <span class="text-muted ms-1"><?php echo esc_html($next['next_label'] ?? ''); ?></span>
+                    </button>
+                <?php endforeach; ?>
+                <a class="btn btn-sm btn-link ms-auto"
+                   href="<?php echo esc_url(admin_url('admin.php?page=tgs-shop-management&view=' . TGS_POA_Menu::VIEW_SCHEDULE)); ?>">
+                    Cấu hình lịch
+                </a>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- Summary cards -->
     <div class="row g-3 mb-3" id="poa-summary">
@@ -151,6 +207,10 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         .poa-supplier-empty { min-height: 240px; display:flex; align-items:center; justify-content:center; color:#64748b; }
         .poa-supplier-filterbar { border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; background:#fff; }
         .poa-supplier-actions { border-top: 1px solid #e5e7eb; background:#f8fafc; }
+        .poa-target-list { max-height: 62vh; overflow: auto; }
+        .poa-target-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: .75rem; background: #fff; cursor: pointer; transition: border-color .12s ease, background .12s ease; }
+        .poa-target-item:hover { border-color: #696cff; background: #f8f9ff; }
+        .poa-target-item.active { border-color: #696cff; box-shadow: 0 0 0 2px rgba(105,108,255,.14); }
         @media (max-width: 991.98px) {
             .poa-supplier-layout { grid-template-columns: 1fr; }
             .poa-supplier-sidebar { border-right: 0; border-bottom: 1px solid #e5e7eb; }
@@ -231,6 +291,32 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             <li><span class="badge bg-label-info">Thừa</span> &mdash; Tồn vượt MAX → cảnh báo dư hàng. Kho thì chỉ cảnh báo, shop thì đề xuất trả về kho cha.</li>
         </ul>
     </div>
+</div>
+
+<!-- =================== MODAL: SELECT SCAN TARGET =================== -->
+<div class="modal fade" id="poaScanTargetModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-1">
+            <i class="bx bx-store-alt me-1"></i> Chọn shop/kho để quét tồn
+          </h5>
+          <div class="small text-muted">Chỉ hiển thị các website nằm trong sơ đồ phân cấp của nguồn hiện tại.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="input-group mb-3">
+          <span class="input-group-text"><i class="bx bx-search"></i></span>
+          <input type="text" class="form-control" id="poa-target-search" placeholder="Tìm tên shop, mã shop hoặc blog ID...">
+        </div>
+        <div id="poa-target-list" class="poa-target-list d-grid gap-2">
+          <div class="text-center text-muted py-4">Đang tải danh sách...</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- =================== MODAL: SUPPLIER STATS =================== -->
@@ -387,6 +473,14 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         kindLabel: <?php echo wp_json_encode($kind_label); ?>,
         khoName: <?php echo wp_json_encode($kho_name); ?>,
         khoId: <?php echo (int) $kho_pid; ?>,
+        isCurrentWarehouse: <?php echo $is_kho_now ? 'true' : 'false'; ?>,
+        selectedBlogId: <?php echo (int) $selected_scan_bid; ?>,
+        scanTargets: <?php echo wp_json_encode(array_values($scan_targets)); ?>,
+        deliveryNonce: <?php echo wp_json_encode($delivery_nonce); ?>,
+        ticketUrls: {
+            purchase: <?php echo wp_json_encode(admin_url('admin.php?page=tgs-shop-management&view=purchase-add')); ?>,
+            internalExport: <?php echo wp_json_encode(admin_url('admin.php?page=tgs-shop-management&view=transfer-export-add')); ?>
+        },
         poDetailUrlBase: <?php echo wp_json_encode(admin_url('admin.php?page=tgs-shop-management&view=' . TGS_POA_Menu::VIEW_DETAIL . '&po_id=')); ?>,
         poListUrl: <?php echo wp_json_encode(admin_url('admin.php?page=tgs-shop-management&view=' . TGS_POA_Menu::VIEW_LIST)); ?>
     };
@@ -399,6 +493,9 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         selected: {}, // {idx: true}
         reviewItems: [],
         reviewLaunchMode: 'main',
+        reviewSubmitMode: 'po',
+        selectedBlogId: POA.selectedBlogId || POA.bid,
+        targetSearch: '',
         supplierStats: {
             loaded: false,
             loading: false,
@@ -532,7 +629,8 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             + '<span class="spinner-border spinner-border-sm me-1"></span> Đang quét tồn...</td></tr>');
         $.post(POA.ajax, {
             action: 'tgs_poa_scan',
-            nonce: POA.nonce
+            nonce: POA.nonce,
+            blog_id: state.selectedBlogId
         }).done(function (resp) {
             if (!resp || !resp.success) {
                 $rows.html('<tr><td colspan="12" class="text-center text-danger py-4">'
@@ -541,6 +639,7 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
                 return;
             }
             var d = resp.data || {};
+            state.selectedBlogId = parseInt(d.blog_id || state.selectedBlogId || POA.bid, 10);
             state.rows = (d.suggestions || []).map(function (r, i) { r._idx = i; return r; });
             state.selected = {};
             state.supplierStats.loaded = false;
@@ -548,6 +647,7 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             state.supplierStats.selected = {};
             setSummary(d.summary || {});
             $('#poa-scan-time').text(new Date().toLocaleString('vi-VN'));
+            updateScanTargetHeader(d);
             renderRows();
             updateSelectedCount();
         }).fail(function () {
@@ -559,18 +659,115 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         var n = Object.keys(state.selected || {}).length;
         $('#poa-selected-count').text(n);
         $('#btn-poa-create').prop('disabled', n === 0);
+        $('#btn-poa-create-purchase-ticket').prop('disabled', n === 0);
+        var internalRows = getSelectedRows().filter(function (r) {
+            return r && r.intent === 'shop_request_from_warehouse' && parseInt(r.receive_blog_id || 0, 10) > 0;
+        });
+        $('#btn-poa-create-internal-ticket').prop('disabled', internalRows.length === 0);
+    }
+
+    function getSelectedRows() {
+        return Object.keys(state.selected || {}).map(function (i) {
+            return state.rows[parseInt(i, 10)];
+        }).filter(Boolean);
     }
 
     function createPOs() {
-        var idxs = Object.keys(state.selected || {});
-        if (!idxs.length) return;
-        var items = idxs.map(function (i) { return state.rows[parseInt(i, 10)]; }).filter(Boolean);
+        var items = getSelectedRows();
+        if (!items.length) return;
         state.reviewLaunchMode = 'main';
+        state.reviewSubmitMode = 'po';
         $('#poa-review-note').val('');
         if (!items.length) { alert('Không có dòng nào.'); return; }
 
         // Mở modal review thay vì tạo ngay
         openReviewModal(items);
+    }
+
+    function createTicketFromSelected(ticketType) {
+        var items = getSelectedRows();
+        if (!items.length) return;
+
+        if (ticketType === 'internal_export') {
+            items = items.filter(function (r) {
+                return r.intent === 'shop_request_from_warehouse' && parseInt(r.receive_blog_id || 0, 10) > 0;
+            });
+            if (!items.length) {
+                alert('Phiếu bán nội bộ chỉ tạo từ các dòng "Shop xin hàng từ kho".');
+                return;
+            }
+        }
+
+        state.reviewLaunchMode = ticketType === 'purchase' ? 'ticket_purchase' : 'ticket_internal_export';
+        state.reviewSubmitMode = state.reviewLaunchMode;
+        $('#poa-review-note').val(ticketType === 'purchase'
+            ? 'Tạo phiếu mua từ quét tồn thông minh'
+            : 'Tạo phiếu bán nội bộ từ quét tồn thông minh');
+        openReviewModal(items);
+    }
+
+    function openTicketCreateFromReview(ticketType, items) {
+        if (!items.length) {
+            alert('Không còn dòng nào hợp lệ để tạo phiếu.');
+            return;
+        }
+
+        var first = items[0] || {};
+        var person = null;
+        var url = '';
+        if (ticketType === 'internal_export') {
+            var receiveId = parseInt(first.receive_blog_id || 0, 10);
+            if (!receiveId) {
+                alert('Không xác định được shop nhận hàng.');
+                return;
+            }
+            person = {
+                id: receiveId,
+                code: 'SHOP-' + receiveId,
+                name: first.receive_blog_name || ('Shop #' + receiveId),
+                phone: '',
+                email: '',
+                address: ''
+            };
+            url = POA.ticketUrls.internalExport;
+        } else {
+            url = POA.ticketUrls.purchase;
+        }
+
+        var payload = {
+            source: 'poa_scan',
+            ticket_type: ticketType,
+            source_blog_id: POA.bid,
+            scan_blog_id: state.selectedBlogId,
+            person: person,
+            items: items.map(function (item) {
+                return {
+                    sku: item.sku || item.product_sku || '',
+                    product_sku: item.sku || item.product_sku || '',
+                    name: item.name || item.product_name || '',
+                    quantity: parseFloat(item.quantity || 0) || 1,
+                    note: item.reason || item.note || '',
+                    reason: item.reason || item.note || '',
+                    request_blog_id: item.request_blog_id || 0,
+                    request_blog_name: item.request_blog_name || '',
+                    transfer_blog_id: item.transfer_blog_id || 0,
+                    transfer_blog_name: item.transfer_blog_name || '',
+                    receive_blog_id: item.receive_blog_id || 0,
+                    receive_blog_name: item.receive_blog_name || ''
+                };
+            }),
+            note: $('#poa-review-note').val() || ''
+        };
+
+        try {
+            sessionStorage.setItem('tgs_poa_ticket_prefill', JSON.stringify(payload));
+        } catch (e) {
+            alert('Không thể lưu dữ liệu tạm để mở phiếu. Hãy kiểm tra cài đặt trình duyệt.');
+            return;
+        }
+
+        window.open(url, '_blank');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('poaReviewModal')).hide();
     }
 
     var INTENT_LBL_MAP = {
@@ -596,6 +793,73 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         return k.split(' ').filter(Boolean).every(function (token) {
             return h.indexOf(token) !== -1;
         });
+    }
+
+    function scanTargetById(blogId) {
+        blogId = parseInt(blogId || 0, 10);
+        var targets = POA.scanTargets || [];
+        for (var i = 0; i < targets.length; i++) {
+            var id = parseInt(targets[i].blog_id || targets[i].id || 0, 10);
+            if (id === blogId) return targets[i];
+        }
+        return null;
+    }
+
+    function updateScanTargetHeader(scanResult) {
+        var target = scanTargetById(state.selectedBlogId) || {};
+        var name = scanResult && scanResult.blog_name ? scanResult.blog_name : (target.name || POA.blogName);
+        var kind = scanResult && scanResult.source_kind ? scanResult.source_kind : (target.type || '');
+        var isWarehouse = kind === 'warehouse';
+        $('#poa-scan-target-label').html(
+            escHtml(name) + ' '
+            + '<span class="badge ' + (isWarehouse ? 'bg-label-primary' : 'bg-label-success') + ' ms-1" id="poa-scan-target-kind">'
+            + (isWarehouse ? 'Kho' : 'Shop') + '</span> '
+            + '<span class="text-muted small" id="poa-scan-target-id">#' + state.selectedBlogId + '</span>'
+        );
+        $('#btn-poa-supplier-stats').toggle(isWarehouse);
+    }
+
+    function renderTargetModal() {
+        var q = state.targetSearch || '';
+        var targets = (POA.scanTargets || []).filter(function (target) {
+            var hay = [target.name || '', target.code || '', target.blog_id || target.id || '', target.type_label || ''].join(' ');
+            return smartMatchText(hay, q);
+        });
+        var $list = $('#poa-target-list');
+        if (!targets.length) {
+            $list.html('<div class="text-center text-muted py-4">Không tìm thấy shop/kho phù hợp.</div>');
+            return;
+        }
+        var html = '';
+        targets.forEach(function (target) {
+            var id = parseInt(target.blog_id || target.id || 0, 10);
+            var type = target.type || '';
+            var badge = type === 'warehouse' ? 'bg-label-primary' : 'bg-label-success';
+            var active = id === parseInt(state.selectedBlogId || 0, 10) ? ' active' : '';
+            html += '<div class="poa-target-item' + active + '" data-blog-id="' + id + '">'
+                + '<div class="d-flex align-items-center justify-content-between gap-2">'
+                + '<div>'
+                + '<div class="fw-semibold">' + escHtml(target.name || ('Blog #' + id)) + '</div>'
+                + '<div class="small text-muted">' + escHtml(target.code || ('SHOP-' + id)) + ' · #' + id + '</div>'
+                + '</div>'
+                + '<span class="badge ' + badge + '">' + escHtml(target.type_label || (type === 'warehouse' ? 'Kho' : 'Shop')) + '</span>'
+                + '</div>'
+                + '</div>';
+        });
+        $list.html(html);
+    }
+
+    function selectScanTarget(blogId, shouldScan) {
+        blogId = parseInt(blogId || 0, 10);
+        if (!blogId) return;
+        state.selectedBlogId = blogId;
+        state.selected = {};
+        updateSelectedCount();
+        updateScanTargetHeader({});
+        renderTargetModal();
+        if (shouldScan) {
+            scan();
+        }
     }
 
     function placeText(id, name) {
@@ -795,7 +1059,8 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
 
         $.post(POA.ajax, {
             action: 'tgs_poa_supplier_stats',
-            nonce: POA.nonce
+            nonce: POA.nonce,
+            blog_id: state.selectedBlogId
         }).done(function (resp) {
             if (!resp || !resp.success) {
                 var msg = (resp && resp.data && resp.data.message) || 'Không tải được thống kê thông minh cần mua từ nhà cung cấp.';
@@ -838,6 +1103,7 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
             return;
         }
         state.reviewLaunchMode = 'supplier_stats';
+        state.reviewSubmitMode = 'po';
         $('#poa-review-note').val('Tạo PO từ thống kê thông minh cần mua từ nhà cung cấp: ' + (group.supplier_code ? group.supplier_code + ' - ' : '') + (group.supplier_name || 'NCC'));
         openReviewModal(items);
     }
@@ -857,6 +1123,21 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
 
     function openReviewModal(items) {
         var $wrap = $('#poa-review-groups').empty();
+        var isTicketMode = state.reviewSubmitMode === 'ticket_purchase' || state.reviewSubmitMode === 'ticket_internal_export';
+        var modalTitle = 'Xem lại & chỉnh số lượng trước khi tạo PO';
+        var confirmHtml = '<i class="bx bx-check-double me-1"></i> Xác nhận tạo PO';
+        if (state.reviewSubmitMode === 'ticket_purchase') {
+            modalTitle = 'Xem lại & chỉnh số lượng trước khi mở phiếu mua';
+            confirmHtml = '<i class="bx bx-window-open me-1"></i> Mở phiếu mua';
+        } else if (state.reviewSubmitMode === 'ticket_internal_export') {
+            modalTitle = 'Xem lại & chỉnh số lượng trước khi mở phiếu bán nội bộ';
+            confirmHtml = '<i class="bx bx-window-open me-1"></i> Mở phiếu bán nội bộ';
+        }
+        $('#poaReviewModal .modal-title').html('<i class="bx bx-edit me-1"></i> ' + escHtml(modalTitle));
+        $('#btn-poa-confirm-create').html(confirmHtml);
+        $('#poaReviewModal .alert-info').html(isTicketMode
+            ? 'Hệ thống sẽ mở trang tạo phiếu với các dòng đã chọn. Bạn vẫn có thể kiểm tra, chỉnh tiếp và chủ động bấm lưu phiếu trên trang mới.'
+            : 'Hệ thống sẽ <b>tự gom nhóm</b> các dòng theo loại đề xuất + nơi chuyển + nơi nhận → mỗi nhóm là 1 phiếu PO riêng.<br>Bạn có thể chỉnh lại <b>SL ghi vào PO</b> và thêm <b>ghi chú từng dòng</b>. Đặt SL = 0 hoặc bỏ tick để loại dòng đó khỏi PO.');
         state.reviewItems = (items || []).map(function (item, i) {
             var copy = $.extend({}, item);
             copy._review_idx = i;
@@ -963,6 +1244,15 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         if (!items.length) { alert('Không còn dòng nào hợp lệ (đã bỏ tick / SL = 0).'); return; }
         var note = $('#poa-review-note').val() || '';
 
+        if (state.reviewSubmitMode === 'ticket_purchase') {
+            openTicketCreateFromReview('purchase', items);
+            return;
+        }
+        if (state.reviewSubmitMode === 'ticket_internal_export') {
+            openTicketCreateFromReview('internal_export', items);
+            return;
+        }
+
         var $btn = $('#btn-poa-confirm-create');
         var oldHtml = $btn.html();
         var openAfterCreate = (state.reviewLaunchMode === 'supplier_stats');
@@ -1016,7 +1306,8 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
 
         $.post(POA.ajax, {
             action: 'tgs_poa_export_excel',
-            nonce: POA.nonce
+            nonce: POA.nonce,
+            blog_id: state.selectedBlogId
         }).done(function (resp) {
             if (!resp || !resp.success) {
                 alert((resp && resp.data && resp.data.message) || 'Không tạo được Excel.');
@@ -1132,9 +1423,32 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         }
     });
 
+    $(document).on('click', '#btn-poa-select-scan-target', function () {
+        renderTargetModal();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('poaScanTargetModal')).show();
+        setTimeout(function () { $('#poa-target-search').trigger('focus'); }, 250);
+    });
+    $(document).on('input', '#poa-target-search', function () {
+        state.targetSearch = $(this).val();
+        renderTargetModal();
+    });
+    $(document).on('click', '.poa-target-item', function () {
+        selectScanTarget($(this).data('blog-id'), true);
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('poaScanTargetModal')).hide();
+    });
+    $(document).on('click', '.poa-delivery-chip', function () {
+        selectScanTarget($(this).data('blog-id'), true);
+    });
+
     $(document).on('click', '#btn-poa-rescan', scan);
     $(document).on('click', '#btn-poa-export', exportExcel);
     $(document).on('click', '#btn-poa-create', createPOs);
+    $(document).on('click', '#btn-poa-create-purchase-ticket', function () {
+        createTicketFromSelected('purchase');
+    });
+    $(document).on('click', '#btn-poa-create-internal-ticket', function () {
+        createTicketFromSelected('internal_export');
+    });
     $(document).on('click', '#btn-poa-confirm-create', confirmCreate);
     $(document).on('input change', '#poa-review-groups .poa-rv-qty, #poa-review-groups .poa-rv-include', updateReviewSummary);
     $(document).on('change', '#poa-review-groups .poa-rv-grp-all', function () {
@@ -1180,6 +1494,10 @@ $nonce    = wp_create_nonce('tgs_poa_nonce');
         $f.val(newVal).trigger('change');
     });
 
-    $(function () { scan(); });
+    $(function () {
+        updateScanTargetHeader({});
+        renderTargetModal();
+        scan();
+    });
 })(jQuery);
 </script>

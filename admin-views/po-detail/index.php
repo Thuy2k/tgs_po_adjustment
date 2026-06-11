@@ -404,6 +404,36 @@ $list_url   = admin_url('admin.php?page=tgs-shop-management&view=' . TGS_POA_Men
             'transfer-export-add':'Phiếu bán hàng nội bộ',
             'transfer-return-add':'Phiếu trả hàng nội bộ'
         };
+        var COPY_TICKET_TYPE = {
+            'purchase-add': 'purchase',
+            'transfer-export-add': 'internal_export',
+            'transfer-return-add': 'internal_return'
+        };
+
+        function copyPersonForView(view) {
+            if (!lastHeader) return null;
+
+            var blogId = 0;
+            var name = '';
+            if (view === 'transfer-export-add') {
+                blogId = parseInt(lastHeader.receive_blog_id || 0, 10);
+                name = lastHeader.receive_blog_name || '';
+            } else if (view === 'transfer-return-add') {
+                blogId = parseInt(lastHeader.receive_blog_id || lastHeader.transfer_blog_id || 0, 10);
+                name = lastHeader.receive_blog_name || lastHeader.transfer_blog_name || '';
+            }
+
+            if (!blogId) return null;
+
+            return {
+                id: blogId,
+                code: 'SHOP-' + blogId,
+                name: name || ('Shop #' + blogId),
+                phone: '',
+                email: '',
+                address: ''
+            };
+        }
 
         function openCopyModal(view) {
             if (!lastItems.length) { alert('Phiếu chưa có dòng nào.'); return; }
@@ -476,11 +506,20 @@ $list_url   = admin_url('admin.php?page=tgs-shop-management&view=' . TGS_POA_Men
                 if (!it) return;
                 var qty = parseFloat($(this).find('.poa-copy-qty').val()) || 1;
                 var note = ($(this).find('.poa-copy-note').val() || '').trim();
-                selected.push({ sku: it.product_sku, quantity: qty, note: note });
+                selected.push({
+                    sku: it.product_sku,
+                    product_sku: it.product_sku,
+                    name: it.product_name,
+                    quantity: qty,
+                    note: note
+                });
             });
             if (!selected.length) { alert('Chưa chọn dòng nào.'); return; }
 
             var payload = {
+                source:  'poa_detail',
+                ticket_type: COPY_TICKET_TYPE[_copyView] || '',
+                person: copyPersonForView(_copyView),
                 items:   selected,
                 po_code: lastHeader ? lastHeader.po_code : '',
                 note:    $('#poa-copy-ticket-note').val().trim()

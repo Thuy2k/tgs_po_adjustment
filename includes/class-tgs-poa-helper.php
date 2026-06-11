@@ -77,6 +77,64 @@ class TGS_POA_Helper
         return $name ?: ('Blog #' . $bid);
     }
 
+    public static function get_scan_targets($source_blog_id = null)
+    {
+        $source_blog_id = $source_blog_id ? (int) $source_blog_id : (int) get_current_blog_id();
+
+        if (class_exists('TGS_Delivery_Schedule_Helper')) {
+            return TGS_Delivery_Schedule_Helper::get_managed_sites($source_blog_id, true, false);
+        }
+
+        $targets = [[
+            'blog_id' => $source_blog_id,
+            'id' => $source_blog_id,
+            'name' => self::get_blog_name($source_blog_id),
+            'code' => 'SHOP-' . $source_blog_id,
+            'type' => self::is_warehouse($source_blog_id) ? 'warehouse' : 'shop',
+            'type_label' => self::is_warehouse($source_blog_id) ? 'Kho' : 'Shop',
+        ]];
+
+        if (class_exists('TGS_Hierarchy_Data') && self::is_warehouse($source_blog_id)) {
+            foreach ((array) TGS_Hierarchy_Data::get_all_descendants($source_blog_id) as $bid) {
+                $bid = (int) $bid;
+                if (!$bid || $bid === $source_blog_id) {
+                    continue;
+                }
+                $is_kho = self::is_warehouse($bid);
+                $targets[] = [
+                    'blog_id' => $bid,
+                    'id' => $bid,
+                    'name' => self::get_blog_name($bid),
+                    'code' => 'SHOP-' . $bid,
+                    'type' => $is_kho ? 'warehouse' : 'shop',
+                    'type_label' => $is_kho ? 'Kho' : 'Shop',
+                ];
+            }
+        }
+
+        return $targets;
+    }
+
+    public static function can_scan_blog($target_blog_id, $source_blog_id = null)
+    {
+        $target_blog_id = (int) $target_blog_id;
+        $source_blog_id = $source_blog_id ? (int) $source_blog_id : (int) get_current_blog_id();
+        if (!$target_blog_id) {
+            return false;
+        }
+        if ($target_blog_id === $source_blog_id) {
+            return true;
+        }
+
+        foreach (self::get_scan_targets($source_blog_id) as $target) {
+            if ((int) ($target['blog_id'] ?? $target['id'] ?? 0) === $target_blog_id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static function ensure_global_product_source()
     {
         if (!class_exists('TGS_Global_Product_Source')) {
