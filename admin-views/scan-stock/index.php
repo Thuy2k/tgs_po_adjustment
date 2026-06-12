@@ -1210,7 +1210,7 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
                   + '<td><input type="number" min="0" step="0.001" class="form-control form-control-sm poa-rv-qty text-end"'
                   +     ' value="' + (parseFloat(r.quantity) || 0) + '" style="max-width:120px"></td>'
                   + '<td><input type="text" class="form-control form-control-sm poa-rv-note"'
-                  +     ' value="' + escHtml(r.reason || '') + '" placeholder="Ghi chú dòng..."></td>'
+                  +     ' value="" placeholder="Ghi chú dòng..."></td>'
                   + '</tr>';
             });
 
@@ -1282,9 +1282,11 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
             var idx = parseInt($tr.data('idx'), 10);
             var src = !isNaN(reviewIdx) ? state.reviewItems[reviewIdx] : state.rows[idx];
             if (!src) return;
+            var lineNote = ($tr.find('.poa-rv-note').val() || '').trim();
             collected.push($.extend({}, src, {
                 quantity: qty,
-                reason: $tr.find('.poa-rv-note').val() || ''
+                note: lineNote,
+                reason: lineNote
             }));
         });
         return collected;
