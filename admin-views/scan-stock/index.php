@@ -731,6 +731,17 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
             };
             url = POA.ticketUrls.internalExport;
         } else {
+            var supplierId = parseInt(first.supplier_id || 0, 10);
+            if (supplierId > 0) {
+                person = {
+                    id: supplierId,
+                    code: first.supplier_code || '',
+                    name: first.supplier_name || ('NCC #' + supplierId),
+                    phone: first.supplier_phone || '',
+                    email: first.supplier_email || '',
+                    address: first.supplier_address || ''
+                };
+            }
             url = POA.ticketUrls.purchase;
         }
 
@@ -959,7 +970,7 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
         if (!group) {
             $('#poa-supplier-active-head').html('<div class="text-muted">Chọn NCC bên trái để xem SKU cần mua.</div>');
             $body.html('<tr><td colspan="9" class="text-center text-muted py-5">Chưa chọn NCC.</td></tr>');
-            $purchase.addClass('disabled').attr('href', '#');
+            $purchase.addClass('disabled').attr('href', '#').removeData('purchase-url');
             $supplier.addClass('disabled').attr('href', '#');
             $create.prop('disabled', true);
             $('#poa-supplier-selected-line').text('Chưa chọn SKU nào.');
@@ -987,8 +998,8 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
             + '</div>'
         );
 
-        if (group.purchase_url) $purchase.removeClass('disabled').attr('href', group.purchase_url);
-        else $purchase.addClass('disabled').attr('href', '#');
+        if (group.purchase_url) $purchase.attr('href', group.purchase_url).data('purchase-url', group.purchase_url);
+        else $purchase.addClass('disabled').attr('href', '#').removeData('purchase-url');
         if (group.edit_url) $supplier.removeClass('disabled').attr('href', group.edit_url);
         else $supplier.addClass('disabled').attr('href', '#');
 
@@ -1040,6 +1051,7 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
             ? ('Đã chọn ' + selected + ' SKU trong NCC này.')
             : 'Chưa chọn SKU nào.');
         $('#btn-poa-supplier-create-po').prop('disabled', selected === 0);
+        $('#btn-poa-open-purchase').toggleClass('disabled', !(group && group.purchase_url && selected > 0));
         $('#poa-supplier-check-all')
             .prop('checked', visible > 0 && selected === visible)
             .prop('indeterminate', selected > 0 && selected < visible);
@@ -1092,12 +1104,7 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
     function openSupplierPOReview() {
         var group = currentSupplierGroup();
         if (!group) return;
-        var items = [];
-        (group.items || []).forEach(function (item) {
-            if (state.supplierStats.selected[supplierItemKey(group.key, item.sku)]) {
-                items.push($.extend({}, item));
-            }
-        });
+        var items = getSelectedSupplierItems(group);
         if (!items.length) {
             alert('Chưa chọn SKU nào.');
             return;
@@ -1105,6 +1112,46 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
         state.reviewLaunchMode = 'supplier_stats';
         state.reviewSubmitMode = 'po';
         $('#poa-review-note').val('Tạo PO từ thống kê thông minh cần mua từ nhà cung cấp: ' + (group.supplier_code ? group.supplier_code + ' - ' : '') + (group.supplier_name || 'NCC'));
+        openReviewModal(items);
+    }
+
+    function getSelectedSupplierItems(group) {
+        var items = [];
+        if (!group) return items;
+        (group.items || []).forEach(function (item) {
+            if (!state.supplierStats.selected[supplierItemKey(group.key, item.sku)]) return;
+            items.push($.extend({}, item, {
+                supplier_id: group.supplier_id || 0,
+                supplier_code: group.supplier_code || '',
+                supplier_name: group.supplier_name || '',
+                supplier_phone: group.supplier_phone || '',
+                supplier_email: group.supplier_email || '',
+                supplier_address: group.supplier_address || ''
+            }));
+        });
+        return items;
+    }
+
+    function openSupplierPurchaseReview(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && $(e.currentTarget).hasClass('disabled')) return;
+
+        var group = currentSupplierGroup();
+        if (!group) return;
+        if (parseInt(group.supplier_id || 0, 10) <= 0) {
+            alert('Nhóm này chưa gắn nhà cung cấp, vẫn cần gắn NCC trước khi tạo phiếu mua.');
+            return;
+        }
+
+        var items = getSelectedSupplierItems(group);
+        if (!items.length) {
+            alert('Chưa chọn SKU nào.');
+            return;
+        }
+
+        state.reviewLaunchMode = 'supplier_stats_ticket_purchase';
+        state.reviewSubmitMode = 'ticket_purchase';
+        $('#poa-review-note').val('Tạo phiếu mua từ thống kê thông minh cần mua từ nhà cung cấp: ' + (group.supplier_code ? group.supplier_code + ' - ' : '') + (group.supplier_name || 'NCC'));
         openReviewModal(items);
     }
 
@@ -1127,8 +1174,8 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
         var modalTitle = 'Xem lại & chỉnh số lượng trước khi tạo PO';
         var confirmHtml = '<i class="bx bx-check-double me-1"></i> Xác nhận tạo PO';
         if (state.reviewSubmitMode === 'ticket_purchase') {
-            modalTitle = 'Xem lại & chỉnh số lượng trước khi mở phiếu mua';
-            confirmHtml = '<i class="bx bx-window-open me-1"></i> Mở phiếu mua';
+            modalTitle = 'Xem lại & chỉnh số lượng trước khi tạo phiếu mua';
+            confirmHtml = '<i class="bx bx-cart-download me-1"></i> Tạo phiếu mua hàng';
         } else if (state.reviewSubmitMode === 'ticket_internal_export') {
             modalTitle = 'Xem lại & chỉnh số lượng trước khi mở phiếu bán nội bộ';
             confirmHtml = '<i class="bx bx-window-open me-1"></i> Mở phiếu bán nội bộ';
@@ -1171,7 +1218,7 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
               + '<div class="card border mb-3" data-group-key="' + escHtml(key) + '">'
               +   '<div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">'
               +     '<div>'
-              +       '<span class="fw-semibold">Phiếu #' + (++gIdx) + '</span> '
+              +       '<span class="fw-semibold">' + (isTicketMode ? 'Nhóm #' : 'Phiếu #') + (++gIdx) + '</span> '
               +       '<span class="badge ' + lbl[1] + ' ms-1">' + escHtml(lbl[0]) + '</span>'
               +     '</div>'
               +     '<div class="small">'
@@ -1189,7 +1236,7 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
               +           '<th class="text-end">Tồn hiện</th>'
               +           '<th class="text-end">Max</th>'
               +           '<th class="text-end">SL đề xuất</th>'
-              +           '<th class="text-end" style="width:140px">SL ghi PO</th>'
+              +           '<th class="text-end" style="width:140px">' + (isTicketMode ? 'SL vào phiếu' : 'SL ghi PO') + '</th>'
               +           '<th style="min-width:200px">Ghi chú dòng</th>'
               +         '</tr>'
               +       '</thead>'
@@ -1217,7 +1264,11 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
             lineCount++;
             qtySum += q;
         });
-        $('#poa-review-summary').text('Sẽ tạo ' + grpCount + ' phiếu · ' + lineCount + ' dòng · tổng SL ' + fmt(qtySum));
+        if (state.reviewSubmitMode === 'ticket_purchase' || state.reviewSubmitMode === 'ticket_internal_export') {
+            $('#poa-review-summary').text('Sẽ đưa vào phiếu · ' + lineCount + ' dòng · tổng SL ' + fmt(qtySum));
+        } else {
+            $('#poa-review-summary').text('Sẽ tạo ' + grpCount + ' phiếu · ' + lineCount + ' dòng · tổng SL ' + fmt(qtySum));
+        }
     }
 
     function collectReviewItems() {
@@ -1416,6 +1467,7 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
         }
         renderSupplierProducts();
     });
+    $(document).on('click', '#btn-poa-open-purchase', openSupplierPurchaseReview);
     $(document).on('click', '#btn-poa-supplier-create-po', openSupplierPOReview);
     $(document).on('hidden.bs.modal', '#poaReviewModal', function () {
         if ($('#poaSupplierStatsModal').hasClass('show')) {
