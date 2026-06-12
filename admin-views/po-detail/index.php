@@ -458,7 +458,7 @@ $list_url   = admin_url('admin.php?page=tgs-shop-management&view=' . TGS_POA_Men
 
                 var $noteInput = $('<input type="text" class="form-control form-control-sm poa-copy-note">')
                     .attr('data-idx', i)
-                    .val(it.note || '');
+                    .val('');
 
                 $tr.append($chkTd)
                    .append($('<td>').append($('<code>').text(it.product_sku)))
