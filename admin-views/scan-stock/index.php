@@ -49,6 +49,10 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
             <h4 class="mb-1">
                 <i class="bx bx-radar me-1"></i>
                 Quét tồn thông minh
+                <i class="bx bx-help-circle text-muted poa-formula-tooltip"
+                   data-bs-toggle="tooltip" data-bs-placement="right" data-bs-html="true"
+                   style="cursor: help; font-size: 1rem; opacity: 0.6;"
+                   title="Công thức: Tồn max shop + Tồn max kho + doanh số tuần 1 &minus; hàng đi đường &minus; tồn kho &minus; tồn shop"></i>
             </h4>
             <div class="text-muted small">
                 Đối chiếu tồn hiện tại với cấu hình Min/Max → đề xuất PO điều chỉnh phù hợp.
@@ -1552,6 +1556,15 @@ $delivery_nonce = wp_create_nonce('tgs_delivery_schedule_nonce');
         updateScanTargetHeader({});
         renderTargetModal();
         scan();
+
+        // Bootstrap tooltip cho icon công thức
+        if (window.bootstrap && bootstrap.Tooltip) {
+            document.querySelectorAll('.poa-formula-tooltip').forEach(function (el) {
+                new bootstrap.Tooltip(el);
+            });
+        } else {
+            $('.poa-formula-tooltip').tooltip();
+        }
     });
 })(jQuery);
 </script>

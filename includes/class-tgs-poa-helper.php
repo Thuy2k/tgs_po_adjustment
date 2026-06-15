@@ -303,14 +303,23 @@ class TGS_POA_Helper
             $priority   = 'normal'; // 'urgent' = dưới MIN, 'normal' = thiếu so với MAX, 'info' = thừa
             $reason     = '';
 
+            // Công thức gợi ý: max(0, Tồn max shop + Tồn max kho + doanh số tuần 1
+            //                                − hàng đi đường − tồn kho − tồn shop)
+            // Hiện tại các trường doanh số tuần 1 / hàng đi đường / tồn shop
+            // chưa có nguồn dữ liệu → mặc định = 0.
+            $max_kho_for_qty = ($is_kho && $max <= 0 && $min > 0) ? $min : $max;
+            $max_shop    = $is_kho ? 0 : $max;
+            $max_kho     = $max_kho_for_qty;
+            $weekly_sales = 0;
+            $in_transit  = 0;
+            $shop_stock  = 0;
+
             if ($is_kho) {
                 // KHO — ưu tiên kiểm tra MIN trước (mua gấp), rồi MAX (mua bổ sung)
                 if ($min > 0 && $current < $min) {
                     // 🔴 DƯỚI MIN — cảnh báo cao nhất, mua gấp
                     $intent   = 'warehouse_purchase_more';
-                    // Mua bù lên trần MAX (nếu có cấu hình), nếu không thì bù lên MIN
-                    $target   = $max > 0 ? $max : $min;
-                    $qty      = max(0, $target - $current);
+                    $qty      = max(0.0, $max_shop + $max_kho + $weekly_sales - $in_transit - $current - $shop_stock);
                     $rcv_bid  = $bid; $rcv_name = $blog_name;
                     $level    = 'danger';
                     $priority = 'urgent';
@@ -318,7 +327,7 @@ class TGS_POA_Helper
                     $count_urgent++; $sum_urgent += $qty;
                 } elseif ($max > 0 && $current < $max) {
                     $intent   = 'warehouse_purchase_more';
-                    $qty      = $max - $current;
+                    $qty      = max(0.0, $max_shop + $max_kho + $weekly_sales - $in_transit - $current - $shop_stock);
                     $rcv_bid  = $bid; $rcv_name = $blog_name;
                     $level    = 'warning';
                     $priority = 'normal';
@@ -326,11 +335,11 @@ class TGS_POA_Helper
                     $count_deficit++; $sum_deficit += $qty;
                 } elseif ($max > 0 && $current > $max) {
                     $intent   = 'warehouse_warning';
-                    $qty      = $current - $max;
+                    $qty      = max(0.0, $max_shop + $max_kho + $weekly_sales - $in_transit - $current - $shop_stock);
                     $level    = 'info';
                     $priority = 'info';
                     $reason   = 'Kho thừa so với tồn max → chỉ cảnh báo (chờ shop xin hàng).';
-                    $count_surplus++; $sum_surplus += $qty;
+                    $count_surplus++; $sum_surplus += ($current - $max);
                 } else {
                     continue; // ok
                 }
@@ -340,15 +349,15 @@ class TGS_POA_Helper
                     if (!$kho_pid) {
                         $reason = 'Shop thiếu hàng nhưng chưa cấu hình kho cha trong cây phân cấp.';
                         $intent = 'shop_request_from_warehouse';
-                        $qty = $max - $current;
-                        $level = 'danger';
+                        $qty    = max(0.0, $max_shop + $max_kho + $weekly_sales - $in_transit - $current - $shop_stock);
+                        $level  = 'danger';
                     } else {
-                        $intent = 'shop_request_from_warehouse';
-                        $qty    = $max - $current;
-                        $tr_bid = $kho_pid; $tr_name = $kho_name;
+                        $intent  = 'shop_request_from_warehouse';
+                        $qty     = max(0.0, $max_shop + $max_kho + $weekly_sales - $in_transit - $current - $shop_stock);
+                        $tr_bid  = $kho_pid; $tr_name = $kho_name;
                         $rcv_bid = $bid;     $rcv_name = $blog_name;
-                        $level = 'warning';
-                        $reason = 'Shop thiếu so với tồn max → đề xuất xin từ kho cha.';
+                        $level   = 'warning';
+                        $reason  = 'Shop thiếu so với tồn max → đề xuất xin từ kho cha.';
                     }
                     $priority = 'normal';
                     $count_deficit++; $sum_deficit += $qty;
@@ -356,18 +365,18 @@ class TGS_POA_Helper
                     if (!$kho_pid) {
                         $reason = 'Shop thừa hàng nhưng chưa cấu hình kho cha trong cây phân cấp.';
                         $intent = 'shop_return_to_warehouse';
-                        $qty = $current - $max;
-                        $level = 'danger';
+                        $qty    = max(0.0, $max_shop + $max_kho + $weekly_sales - $in_transit - $current - $shop_stock);
+                        $level  = 'danger';
                     } else {
                         $intent  = 'shop_return_to_warehouse';
-                        $qty     = $current - $max;
+                        $qty     = max(0.0, $max_shop + $max_kho + $weekly_sales - $in_transit - $current - $shop_stock);
                         $tr_bid  = $bid;     $tr_name = $blog_name;
                         $rcv_bid = $kho_pid; $rcv_name = $kho_name;
                         $level   = 'info';
                         $reason  = 'Shop thừa so với tồn max → đề xuất chuyển trả về kho cha.';
                     }
                     $priority = 'info';
-                    $count_surplus++; $sum_surplus += $qty;
+                    $count_surplus++; $sum_surplus += ($current - $max);
                 } else {
                     continue;
                 }
